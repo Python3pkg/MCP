@@ -15,13 +15,13 @@ import subprocess
 import sys
 import tempfile
 import time
-import urllib
-import urllib2
+import urllib.request, urllib.parse, urllib.error
+import urllib.request, urllib.error, urllib.parse
 
 try:
-    from cStringIO import StringIO
+    from io import StringIO
 except ImportError:
-    from StringIO import StringIO
+    from io import StringIO
 
 
 __all__ = ['ClientException', 'Position', 'GameState', 'main']
@@ -58,10 +58,10 @@ class Position(_Position):
     def neighbours(self):
         if self.at_pole:
             y = 1 if self.y == 0 else GameState.HEIGHT - 2
-            return (Position(i, y) for i in xrange(GameState.WIDTH))
+            return (Position(i, y) for i in range(GameState.WIDTH))
         else:
             deltas = ((0, 1), (1, 0), (-1, 0), (0, -1))
-            return itertools.imap(self.__add__, deltas)
+            return map(self.__add__, deltas)
 
 
 class GameState(object):
@@ -94,7 +94,7 @@ class GameState(object):
 
             s = line[2]
             try:
-                pos = Position(map(int, line[:2]))
+                pos = Position(list(map(int, line[:2])))
             except ValueError:
                 raise ClientException('Found an invalid game state line: %s'
                                       % line)
@@ -114,7 +114,7 @@ class GameState(object):
             raise ClientException('Game state file is missing entries')
 
         state_count = collections.defaultdict(int)
-        for s in state.itervalues():
+        for s in state.values():
             state_count[s] += 1
         if state_count['You'] != 1 or state_count['Opponent'] != 1:
             raise ClientException('You or Opponent state not specified only '
@@ -129,9 +129,9 @@ class GameState(object):
 
     @classmethod
     def iter_positions(cls):
-        ps = itertools.product(xrange(cls.WIDTH), xrange(1, cls.HEIGHT - 1))
+        ps = itertools.product(range(cls.WIDTH), range(1, cls.HEIGHT - 1))
         ps = itertools.chain([(0, 0)], ps, [(0, cls.HEIGHT - 1)])
-        return itertools.imap(Position, ps)
+        return map(Position, ps)
 
     @classmethod
     def random_start_game_state(cls):
@@ -150,12 +150,12 @@ class GameState(object):
         return self.state[pos]
 
     def __iter__(self):
-        return self.state.iteritems()
+        return iter(self.state.items())
 
     def dump(self, fd):
         for pos, state in self:
             if pos.at_pole:
-                for x in xrange(GameState.WIDTH):
+                for x in range(GameState.WIDTH):
                     fd.write('%d %d %s\r\n' % (x, pos.y, state))
             else:
                 fd.write('%d %d %s\r\n' % (pos.x, pos.y, state))
@@ -212,7 +212,7 @@ class GameState(object):
             ('Clear', 'You'): new,
             ('You', 'YourWall'): old,
         }
-        for pos, state_change in diff.iteritems():
+        for pos, state_change in diff.items():
             if valid_state_changes.get(state_change) != pos:
                 raise ClientException('Invalid state change')
 
@@ -226,10 +226,10 @@ class GameState(object):
             'Clear': ' ',
         }
         lines = ['+' + '-' * GameState.WIDTH + '+']
-        for y in xrange(GameState.HEIGHT):
+        for y in range(GameState.HEIGHT):
             line = ['|']
             line.extend(mapping[self[Position(x, y)]]
-                        for x in xrange(GameState.WIDTH))
+                        for x in range(GameState.WIDTH))
             line.append('|')
             lines.append(''.join(line))
         lines.append('+' + '-' * GameState.WIDTH + '+')
@@ -241,11 +241,11 @@ DEFAULT_EXECUTABLE = ['./start.sh', 'start.bat'][os.name == 'nt']
 
 def test_game_state(gs):
     for x in zip(gs.ascii().splitlines(), gs.flip().ascii().splitlines()):
-        print('%s  %s' % x)
-    print('%s => %s' % (gs.you, list(gs.neighbours(gs.you))))
-    print('%s => %s' % (gs.opponent, list(gs.neighbours(gs.opponent))))
+        print(('%s  %s' % x))
+    print(('%s => %s' % (gs.you, list(gs.neighbours(gs.you)))))
+    print(('%s => %s' % (gs.opponent, list(gs.neighbours(gs.opponent)))))
     polar = Position(13, GameState.HEIGHT - 1)
-    print('%s => %s' % (polar, list(gs.neighbours(polar))))
+    print(('%s => %s' % (polar, list(gs.neighbours(polar)))))
 
     s = gs.dumps()
     gs2 = GameState.loads(s)
@@ -286,8 +286,8 @@ def run_local_game(args):
     turn = 0
     while True:
         os.system(['clear', 'cls'][os.name == 'nt'])
-        print(game_state.ascii())
-        print
+        print((game_state.ascii()))
+        print()
 
         can_move = lambda p: len(list(game_state.neighbours(p))) > 0
         result = {
@@ -302,15 +302,15 @@ def run_local_game(args):
         is_player1 = turn % 2 == 0
         player = 'Player 1' if is_player1 else 'Player 2'
         opponent = 'Player 2' if is_player1 else 'Player 1'
-        print('Running turn for %s...' % player)
+        print(('Running turn for %s...' % player))
         try:
             if is_player1:
                 game_state = run(args.player1, game_state)
             else:
                 game_state = run(args.player2, game_state.flip()).flip()
         except ClientException as e:
-            print('%s made an illegal move: %s' % (player, e))
-            print('%s wins' % opponent)
+            print(('%s made an illegal move: %s' % (player, e)))
+            print(('%s wins' % opponent))
             break
 
         turn += 1
@@ -319,22 +319,22 @@ def run_local_game(args):
 def run_remote_game(args):
     while True:
         print('Fetching state from server...')
-        payload = json.load(urllib2.urlopen(args.url))
-        player_num = payload[u'player_num']
-        current_player = payload[u'current_player']
-        winners = payload[u'winners']
-        game_state = GameState.loads(payload[u'game_state'])
+        payload = json.load(urllib.request.urlopen(args.url))
+        player_num = payload['player_num']
+        current_player = payload['current_player']
+        winners = payload['winners']
+        game_state = GameState.loads(payload['game_state'])
 
         os.system(['clear', 'cls'][os.name == 'nt'])
-        print(game_state.ascii())
-        print(payload[u'description'])
+        print((game_state.ascii()))
+        print((payload['description']))
 
         if winners:
             plural = ' is' if len(winners) == 1 else 's are'
-            winners = ('%s (%d)' % (payload[u'players'][i - 1][u'username'], i)
+            winners = ('%s (%d)' % (payload['players'][i - 1]['username'], i)
                        for i in winners)
             winners = ' and '.join(winners)
-            print('Game over. The winner%s %s' % (plural, winners))
+            print(('Game over. The winner%s %s' % (plural, winners)))
             break
 
         if current_player != player_num:
@@ -347,21 +347,21 @@ def run_remote_game(args):
             game_state = run(args.command, game_state)
             game_state = game_state.dumps()
         except ClientException as e:
-            print('Your AI made an illegal move: %s' % e)
+            print(('Your AI made an illegal move: %s' % e))
             print('Please fix your client and rerun this command to resume '
                   'the game')
-            print(' '.join(sys.argv))
+            print((' '.join(sys.argv)))
             break
 
         try:
-            data = urllib.urlencode({'game_state': game_state})
-            urllib2.urlopen(args.url, data).read()
+            data = urllib.parse.urlencode({'game_state': game_state})
+            urllib.request.urlopen(args.url, data).read()
         except:
             import logging
             logging.exception('Unexpected exception when POSTing the new '
                               'game state')
             print('Could not connect to the server. Please try again later')
-            print(' '.join(sys.argv))
+            print((' '.join(sys.argv)))
             break
 
 
